@@ -34,62 +34,7 @@ export const syncChannelData = async (channelId = '') => {
         ]
     );
 
-    // 2. Extraer Playlists y sus relaciones
-    let nextPlaylistPageToken = null;
-    do {
-        const playlistsRes = await youtube.playlists.list({
-            part: ['snippet', 'contentDetails'],
-            channelId: channelId,
-            maxResults: 50,
-            pageToken: nextPlaylistPageToken,
-        });
-
-        for (const pl of playlistsRes.data.items || []) {
-            await query(
-                `INSERT INTO playlists (playlist_id, channel_id, title, description, item_count, published_at, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, NOW())
-                 ON CONFLICT (playlist_id) DO UPDATE SET
-                    title = EXCLUDED.title,
-                    description = EXCLUDED.description,
-                    item_count = EXCLUDED.item_count,
-                    updated_at = NOW();`,
-                [
-                    pl.id,
-                    channelId,
-                    pl.snippet.title,
-                    pl.snippet.description,
-                    pl.contentDetails.itemCount,
-                    pl.snippet.publishedAt,
-                ]
-            );
-
-            let nextPlaylistItemToken = null;
-            do {
-                const itemsRes = await youtube.playlistItems.list({
-                    part: ['snippet'],
-                    playlistId: pl.id,
-                    maxResults: 50,
-                    pageToken: nextPlaylistItemToken,
-                });
-
-                for (const item of itemsRes.data.items || []) {
-                    const videoIdInPl = item.snippet.resourceId?.videoId;
-                    if (videoIdInPl) {
-                        await query(
-                            `INSERT INTO playlist_items (playlist_id, video_id, position)
-                             VALUES ($1, $2, $3)
-                             ON CONFLICT (playlist_id, video_id) DO UPDATE SET position = EXCLUDED.position;`,
-                            [pl.id, videoIdInPl, item.snippet.position]
-                        );
-                    }
-                }
-                nextPlaylistItemToken = itemsRes.data.nextPageToken;
-            } while (nextPlaylistItemToken);
-        }
-        nextPlaylistPageToken = playlistsRes.data.nextPageToken;
-    } while (nextPlaylistPageToken);
-
-    // 3. Extracción masiva de Vídeos (Paginación completa + Tags)
+    // 2. Extracción masiva de Vídeos (AHORA PRIMERO)
     const uploadsPlaylistId = channel.contentDetails.relatedPlaylists.uploads;
     let videoIds = [];
     let nextPageToken = null;
@@ -153,6 +98,63 @@ export const syncChannelData = async (channelId = '') => {
             );
         }
     }
+
+    // 3. Extraer Playlists y sus relaciones (DESPUÉS DE LOS VÍDEOS)
+    let nextPlaylistPageToken = null;
+    do {
+        const playlistsRes = await youtube.playlists.list({
+            part: ['snippet', 'contentDetails'],
+            channelId: channelId,
+            maxResults: 50,
+            pageToken: nextPlaylistPageToken,
+        });
+
+        for (const pl of playlistsRes.data.items || []) {
+            await query(
+                `INSERT INTO playlists (playlist_id, channel_id, title, description, item_count, published_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                 ON CONFLICT (playlist_id) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    description = EXCLUDED.description,
+                    item_count = EXCLUDED.item_count,
+                    updated_at = NOW();`,
+                [
+                    pl.id,
+                    channelId,
+                    pl.snippet.title,
+                    pl.snippet.description,
+                    pl.contentDetails.itemCount,
+                    pl.snippet.publishedAt,
+                ]
+            );
+
+            let nextPlaylistItemToken = null;
+            do {
+                const itemsRes = await youtube.playlistItems.list({
+                    part: ['snippet'],
+                    playlistId: pl.id,
+                    maxResults: 50,
+                    pageToken: nextPlaylistItemToken,
+                });
+
+                for (const item of itemsRes.data.items || []) {
+                    const videoIdInPl = item.snippet.resourceId?.videoId;
+                    if (videoIdInPl) {
+                        // Inserción segura que valida que el vídeo exista en la BD
+                        await query(
+                            `INSERT INTO playlist_items (playlist_id, video_id, position)
+                             SELECT $1::text, $2::text, $3::integer
+                             WHERE EXISTS (SELECT 1 FROM videos WHERE video_id = $2)
+                             ON CONFLICT (playlist_id, video_id) DO UPDATE SET position = EXCLUDED.position;`,
+                            [pl.id, videoIdInPl, item.snippet.position]
+                        );
+                    }
+                }
+                nextPlaylistItemToken = itemsRes.data.nextPageToken;
+            } while (nextPlaylistItemToken);
+        }
+        nextPlaylistPageToken = playlistsRes.data.nextPageToken;
+    } while (nextPlaylistPageToken);
 
     // 4. YouTube Analytics
     const todayStr = new Date().toISOString().split('T')[0];
