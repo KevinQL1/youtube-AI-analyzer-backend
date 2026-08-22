@@ -39,9 +39,11 @@ export const askChannelAI = async (userQuestion) => {
 
                 REGLAS CRÍTICAS DE SINTAXIS Y FORMATO:
                 1. Retorna ÚNICAMENTE la consulta SQL pura en texto plano (sin bloques markdown \`\`\`sql).
-                2. NO INCLUYAS COMENTARIOS en el código SQL (prohibido usar '--' o '/* */').
-                3. La columna 'video_id' es de tipo TEXT. Si usas NULL en UNION ALL para video_id, usa NULL::text (NUNCA NULL::uuid).
-                4. Mantén las consultas simples y directas. Si la pregunta pide dos cosas, prioriza una consulta limpia con GROUP BY o una subconsulta básica.`
+                2. NUNCA respondas con texto conversacional, saludos ni explicaciones. SIEMPRE debes retornar únicamente código SQL ejecutable.
+                3. Si el usuario saluda, hace pruebas o no pide nada analítico concreto, devuelve una consulta simple como: SELECT title, total_views, subscribers FROM channels LIMIT 1;
+                4. NO INCLUYAS COMENTARIOS en el código SQL (prohibido usar '--' o '/* */').
+                5. La columna 'video_id' es de tipo TEXT. Si usas NULL en UNION ALL para video_id, usa NULL::text (NUNCA NULL::uuid).
+                6. Mantén las consultas simples y directas.`
             },
             {
                 role: 'user',
@@ -59,6 +61,12 @@ export const askChannelAI = async (userQuestion) => {
         .split('\n')
         .filter(line => !line.trim().startsWith('--'))
         .join('\n');
+
+    // Validación básica: comprobar que el texto generado empiece con una instrucción SQL
+    const isSql = /^(SELECT|WITH|SHOW|EXPLAIN)\b/i.test(generatedSql.trim());
+    if (!isSql) {
+        generatedSql = 'SELECT title, total_views, subscribers FROM channels LIMIT 1;';
+    }
 
     // 2. Ejecutar la consulta en la BD
     let dbData;
@@ -78,6 +86,7 @@ export const askChannelAI = async (userQuestion) => {
                 content: `Eres el "Head of Growth" del canal de YouTube. Tu objetivo es ayudar al creador a escalar el canal basándote en los datos reales extraídos.
 
                 INSTRUCCIONES DE RESPUESTA:
+                - Si el mensaje del usuario era un saludo o una prueba, responde amablemente indicando que estás listo para analizar su canal.
                 - Analiza la RETENCIÓN (% consumido): Si la retención es baja (<30%), advierte que el problema está en el gancho o la estructura del video.
                 - Identifica OUTLIERS: Señala si un video triunfó por suerte/tema puntual o si es un patrón repetible.
                 - Sé directo, estratégico y basado en datos. Ofrece siempre 2-3 ACCIONES CONCRETAS para el próximo video o playlist.`
