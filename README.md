@@ -11,7 +11,7 @@ El sistema sincroniza el canal, guarda historiales, responde preguntas en lengua
 - Videos, Shorts, videos largos, playlists, etiquetas y relaciones entre playlists y videos.
 - Estado editorial de cada video: publicado, programado, privado o no listado, incluida su fecha programada.
 - Clasificacion oficial de Shorts con `creatorContentType` de YouTube Analytics y deteccion de respaldo.
-- Metricas diarias por video durante los ultimos 30 dias.
+- Metricas diarias por video durante el ultimo año.
 - Historial diario de suscriptores, vistas y cantidad de videos.
 - Registro de sincronizaciones `running`, `completed`, `partial` y `failed`.
 - Memoria de conversaciones recientes.
