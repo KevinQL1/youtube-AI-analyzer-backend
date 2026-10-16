@@ -124,7 +124,12 @@ export const askChannelAI = async (userQuestion) => {
     // 2. Ejecutar la consulta en la BD
     let dbData;
     try {
-        const dbResult = await query(generatedSql);
+        // Las consultas generadas suelen filtrar por el canal usando $1. Ese
+        // valor debe enviarse por separado para que node-postgres lo resuelva.
+        const sqlParams = /\$1\b/.test(generatedSql) && channelContext?.channel_id
+            ? [channelContext.channel_id]
+            : [];
+        const dbResult = await query(generatedSql, sqlParams);
         dbData = dbResult.rows;
     } catch (dbError) {
         console.error(`❌ [Error SQL]: ${dbError.message} | Query:\n${generatedSql}`);
