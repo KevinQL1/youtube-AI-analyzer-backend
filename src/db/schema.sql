@@ -108,6 +108,19 @@ CREATE TABLE IF NOT EXISTS channel_analytics_insights (
   PRIMARY KEY (channel_id, insight_type, period_start, period_end)
 );
 
+-- Informe de alcance del YouTube Reporting API (impresiones y CTR)
+CREATE TABLE IF NOT EXISTS youtube_reach_daily (
+  report_id VARCHAR(255) NOT NULL,
+  report_created_at TIMESTAMP,
+  report_date DATE NOT NULL,
+  channel_id VARCHAR(255),
+  video_id VARCHAR(255) NOT NULL,
+  impressions BIGINT DEFAULT 0,
+  impressions_ctr NUMERIC,
+  updated_at TIMESTAMP DEFAULT NOW(),
+  PRIMARY KEY (report_id, video_id, report_date)
+);
+
 -- 5. Tabla de Playlists
 CREATE TABLE IF NOT EXISTS playlists (
   playlist_id VARCHAR(100) PRIMARY KEY,
@@ -134,6 +147,7 @@ CREATE INDEX IF NOT EXISTS idx_video_analytics_date ON video_analytics_daily(rec
 CREATE INDEX IF NOT EXISTS idx_video_analytics_video ON video_analytics_daily(video_id);
 CREATE INDEX IF NOT EXISTS idx_video_analytics_video_date ON video_analytics_daily(video_id, record_date DESC);
 CREATE INDEX IF NOT EXISTS idx_channel_insights_type ON channel_analytics_insights(channel_id, insight_type, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_youtube_reach_video_date ON youtube_reach_daily(video_id, report_date DESC);
 CREATE INDEX IF NOT EXISTS idx_playlists_channel_id ON playlists(channel_id);
 CREATE INDEX IF NOT EXISTS idx_playlist_items_video_id ON playlist_items(video_id);
 CREATE INDEX IF NOT EXISTS idx_channels_updated_at ON channels(updated_at DESC);

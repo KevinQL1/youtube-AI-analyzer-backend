@@ -4,6 +4,7 @@ import aiRoutes from '#routes/aiRoutes';
 import syncRoutes from '#routes/syncRoutes';
 import channelRoutes from '#routes/channelRoutes';
 import analyticsRoutes from '#routes/analyticsRoutes';
+import reportingRoutes from '#routes/reportingRoutes';
 
 const app = express();
 
@@ -22,5 +23,6 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/channel', channelRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/reporting', reportingRoutes);
 
 export default app;

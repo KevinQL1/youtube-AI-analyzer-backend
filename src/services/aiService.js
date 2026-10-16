@@ -101,6 +101,14 @@ export const askChannelAI = async (userQuestion) => {
         `, [channelContext.channel_id])
         : { rows: [] };
     const analyticsSummary = analyticsSnapshot.rows[0] || null;
+    const reachSnapshot = await query(`
+        SELECT COUNT(*)::int AS reach_rows,
+               COALESCE(SUM(impressions), 0)::bigint AS impressions,
+               ROUND(AVG(impressions_ctr)::numeric, 2) AS average_ctr,
+               MAX(report_date) AS latest_reach_date
+        FROM youtube_reach_daily
+    `);
+    const reachSummary = reachSnapshot.rows[0] || null;
     const insightsSnapshot = channelContext
         ? await query(`
             SELECT insight_type, period_start, period_end, data, updated_at
@@ -241,6 +249,7 @@ export const askChannelAI = async (userQuestion) => {
                 El bloque Datos faltantes debe ocupar como máximo dos viñetas y no debe dominar el diagnóstico. Continúa con recomendaciones basadas en las métricas disponibles.
                 No uses objetivos arbitrarios como "superar 4% de retención". Los objetivos deben compararse con la línea base real del canal y expresarse como mejora porcentual o puntos porcentuales.
                 No presentes CTR, impresiones ni datos demográficos como si estuvieran disponibles si no aparecen en los snapshots. Indica que requieren un informe de alcance separado o que YouTube los oculta por privacidad.
+                El bloque reachSummary contiene impresiones y CTR del YouTube Reporting API. Si reach_rows es cero, explica que el primer informe puede tardar hasta 24 horas.
                 FORMATO OBLIGATORIO: responde siempre en Markdown limpio y en este orden: "## Diagnóstico", "## Hallazgos clave", "## Acciones prioritarias" y "## Datos faltantes" solo si realmente faltan datos.
                 Usa tablas Markdown solo para comparaciones cortas (máximo 6 columnas y 10 filas). Para listas de videos usa viñetas con título, tipo, vistas y retención. No pegues JSON, SQL ni objetos internos en la respuesta.
                 Cada recomendación debe incluir: acción, motivo basado en un dato y cómo medirla. Separa cada idea en párrafos cortos y evita repetir el resumen del canal.
@@ -251,7 +260,7 @@ export const askChannelAI = async (userQuestion) => {
             },
             {
                 role: 'user',
-                content: `Pregunta del creador: "${userQuestion}"\n\n${syncResult ? `Sincronizacion terminada: ${syncResult.totalVideosSynced} videos procesados. ` : ''}Resumen actual del canal (usa estos datos siempre que sean relevantes):\n${JSON.stringify(channelContext)}\n\nResumen analítico calculado por PostgreSQL:\n${JSON.stringify(analyticsSummary)}\n\nRendimiento de los 20 videos publicados con más vistas:\n${JSON.stringify(topVideoAnalyticsSnapshot.rows)}\n\nAudiencia (fuentes de tráfico y demografía):\n${JSON.stringify(insightsSnapshot.rows)}\n\nPerfil y objetivos del creador:\n${JSON.stringify(creatorProfile)}\n\nConversacion reciente (solo contexto breve):\n${JSON.stringify(compactHistory)}\n\nDatos de la consulta (muestra limitada; no inventes datos fuera de ella):\n${JSON.stringify(compactDbData)}`
+                content: `Pregunta del creador: "${userQuestion}"\n\n${syncResult ? `Sincronizacion terminada: ${syncResult.totalVideosSynced} videos procesados. ` : ''}Resumen actual del canal (usa estos datos siempre que sean relevantes):\n${JSON.stringify(channelContext)}\n\nResumen analítico calculado por PostgreSQL:\n${JSON.stringify(analyticsSummary)}\n\nRendimiento de los 20 videos publicados con más vistas:\n${JSON.stringify(topVideoAnalyticsSnapshot.rows)}\n\nAudiencia (fuentes de tráfico y demografía):\n${JSON.stringify(insightsSnapshot.rows)}\n\nAlcance (impresiones y CTR):\n${JSON.stringify(reachSummary)}\n\nPerfil y objetivos del creador:\n${JSON.stringify(creatorProfile)}\n\nConversacion reciente (solo contexto breve):\n${JSON.stringify(compactHistory)}\n\nDatos de la consulta (muestra limitada; no inventes datos fuera de ella):\n${JSON.stringify(compactDbData)}`
             }
         ],
         model: 'openai/gpt-oss-120b',
