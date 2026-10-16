@@ -109,6 +109,7 @@ export const askChannelAI = async (userQuestion) => {
         ],
         model: 'openai/gpt-oss-120b',
         temperature: 0,
+        max_tokens: 1800,
     });
 
     let generatedSql = sqlCompletion.choices[0]?.message?.content?.trim().replace(/```sql|```/g, '');
@@ -122,7 +123,8 @@ export const askChannelAI = async (userQuestion) => {
     // Validación básica: comprobar que el texto generado empiece con una instrucción SQL
     const normalizedSql = generatedSql.trim();
     const hasOnlyOneStatement = !normalizedSql.slice(0, -1).includes(';');
-    const isSql = normalizedSql.length <= 12000 && hasBalancedParentheses(normalizedSql) && hasOnlyOneStatement &&
+    const hasInvalidArraySlice = /\]\s*:\s*\d/.test(normalizedSql);
+    const isSql = normalizedSql.length <= 12000 && !hasInvalidArraySlice && hasBalancedParentheses(normalizedSql) && hasOnlyOneStatement &&
         /^(SELECT|WITH|SHOW|EXPLAIN)\b/i.test(normalizedSql) &&
         !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|COPY|DO)\b/i.test(normalizedSql);
     if (!isSql) {
@@ -161,6 +163,14 @@ export const askChannelAI = async (userQuestion) => {
         dbData = fallbackResult.rows;
     }
 
+    // Reducimos el contexto variable para respetar el límite de tokens de Groq.
+    const compactHistory = conversationHistory.slice(-6).map((message) => ({
+        role: message.role,
+        content: String(message.content || '').slice(0, 700),
+        created_at: message.created_at,
+    }));
+    const compactDbData = Array.isArray(dbData) ? dbData.slice(0, 30) : dbData;
+
     // 3. Sintetizar la respuesta como Senior YouTube Growth Consultant
     const answerCompletion = await groq.chat.completions.create({
         messages: [
@@ -180,11 +190,12 @@ export const askChannelAI = async (userQuestion) => {
             },
             {
                 role: 'user',
-                content: `Pregunta del creador: "${userQuestion}"\n\n${syncResult ? `Sincronizacion terminada: ${syncResult.totalVideosSynced} videos procesados. ` : ''}Resumen actual del canal (usa estos datos siempre que sean relevantes):\n${JSON.stringify(channelContext, null, 2)}\n\nPerfil y objetivos del creador:\n${JSON.stringify(creatorProfile, null, 2)}\n\nConversacion reciente (usala solo para mantener continuidad):\n${JSON.stringify(conversationHistory, null, 2)}\n\nDatos de la consulta:\n${JSON.stringify(dbData, null, 2)}`
+                content: `Pregunta del creador: "${userQuestion}"\n\n${syncResult ? `Sincronizacion terminada: ${syncResult.totalVideosSynced} videos procesados. ` : ''}Resumen actual del canal (usa estos datos siempre que sean relevantes):\n${JSON.stringify(channelContext)}\n\nPerfil y objetivos del creador:\n${JSON.stringify(creatorProfile)}\n\nConversacion reciente (solo contexto breve):\n${JSON.stringify(compactHistory)}\n\nDatos de la consulta (muestra limitada; no inventes datos fuera de ella):\n${JSON.stringify(compactDbData)}`
             }
         ],
         model: 'openai/gpt-oss-120b',
         temperature: 0.4,
+        max_tokens: 1800,
     });
 
     if (channelContext?.channel_id) {
