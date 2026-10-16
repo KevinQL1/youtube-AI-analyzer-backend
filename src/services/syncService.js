@@ -249,7 +249,9 @@ export const syncChannelData = async (channelId = env.channelId) => {
             startDate,
             endDate: todayStr,
             metrics: 'views,likes,comments,subscribersGained,subscribersLost,estimatedMinutesWatched,averageViewDuration',
-            dimensions: 'day,video,creatorContentType',
+            // creatorContentType no es compatible con todos los informes de
+            // métricas. La clasificación se intenta por separado arriba.
+            dimensions: 'day,video',
             filters: `video==${analyticsVideoIds.join(',')}`,
             maxResults: 200,
             startIndex,
@@ -260,7 +262,6 @@ export const syncChannelData = async (channelId = env.channelId) => {
             const [
                 recordDate,
                 videoId,
-                creatorContentType,
                 views,
                 likes,
                 comments,
@@ -285,8 +286,6 @@ export const syncChannelData = async (channelId = env.channelId) => {
                     average_view_duration_seconds = EXCLUDED.average_view_duration_seconds;`,
                 [videoId, recordDate, views, likes, comments, subscribersGained, subscribersLost, estimatedMinutes, avgDuration]
             );
-            if (creatorContentType === 'SHORTS') officialContentTypes.set(videoId, 'shorts');
-            if (creatorContentType === 'VIDEO_ON_DEMAND') officialContentTypes.set(videoId, 'videoOnDemand');
         }
         totalResults = Number(analyticsRes.data.totalResults || rows.length);
         startIndex += rows.length;

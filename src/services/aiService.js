@@ -63,6 +63,8 @@ export const askChannelAI = async (userQuestion) => {
                COALESCE(SUM(v.comments), 0)::bigint AS stored_video_comments,
                MIN(v.published_at) AS oldest_video_published_at,
                MAX(v.published_at) AS newest_video_published_at,
+               MIN(v.published_at)::date AS oldest_video_date,
+               MAX(v.published_at)::date AS newest_video_date,
                COUNT(v.video_id) FILTER (WHERE v.publication_status = 'published')::int AS published_video_count,
                COUNT(v.video_id) FILTER (WHERE v.publication_status = 'scheduled')::int AS scheduled_video_count,
                COUNT(v.video_id) FILTER (WHERE v.content_type = 'shorts')::int AS shorts_count,
@@ -145,6 +147,8 @@ export const askChannelAI = async (userQuestion) => {
         generatedSql = `SELECT c.title, c.subscribers, c.total_views, c.total_videos, c.updated_at,
                                MIN(v.published_at) AS oldest_video_published_at,
                                MAX(v.published_at) AS newest_video_published_at,
+                               MIN(v.published_at)::date AS oldest_video_date,
+                               MAX(v.published_at)::date AS newest_video_date,
                                COUNT(v.video_id) FILTER (WHERE v.publication_status = 'published')::int AS published_video_count,
                                COUNT(v.video_id) FILTER (WHERE v.publication_status = 'scheduled')::int AS scheduled_video_count,
                                COUNT(v.video_id) FILTER (WHERE v.content_type = 'shorts')::int AS shorts_count,
@@ -167,7 +171,7 @@ export const askChannelAI = async (userQuestion) => {
                 INSTRUCCIONES DE RESPUESTA:
                 El resumen del canal incluye suscriptores, vistas totales, cantidad de videos y fecha de actualización. Menciónalos cuando respondan a la pregunta y nunca los confundas con las vistas sumadas de videos.
                 Tambien eres experto en ideas de contenido, titulos, miniaturas, guiones, SEO, calendario editorial, Shorts, comunidad y monetizacion. No inventes metricas ni prometas viralidad.
-                Usa siempre oldest_video_published_at y newest_video_published_at para calcular la antiguedad y el periodo real de actividad. Nunca asumas que el canal tiene uno o dos años por el numero de videos.
+                Usa siempre oldest_video_date y newest_video_date para calcular la antiguedad y el periodo real de actividad. Son fechas de calendario del API; no las conviertas a otra zona horaria. Nunca asumas que el canal tiene uno o dos años por el numero de videos.
                 Si una métrica no aparece en los datos recibidos (por ejemplo CTR, impresiones o retención), dilo claramente como dato no disponible y no la sustituyas por porcentajes inventados ni hipótesis presentadas como hechos.
                 - Si el mensaje del usuario era un saludo o una prueba, responde amablemente indicando que estás listo para analizar su canal.
                 - Analiza la RETENCIÓN (% consumido): Si la retención es baja (<30%), advierte que el problema está en el gancho o la estructura del video.
