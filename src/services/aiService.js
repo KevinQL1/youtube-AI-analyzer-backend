@@ -238,6 +238,9 @@ export const askChannelAI = async (userQuestion) => {
                 Si average_view_duration_seconds o retention_percentage tienen valor para un video, no digas que el tiempo medio de visualización está ausente; indica solo qué videos no tienen filas de Analytics.
                 No afirmes que una duración concreta garantiza una retención determinada. Presenta las duraciones como hipótesis de prueba basadas en los datos del canal.
                 Cuando no haya demografía o fuentes de tráfico, explica que YouTube puede ocultar datos por umbrales de privacidad o volumen. No recomiendes activar una supuesta audiencia avanzada.
+                FORMATO OBLIGATORIO: responde siempre en Markdown limpio y en este orden: "## Diagnóstico", "## Hallazgos clave", "## Acciones prioritarias" y "## Datos faltantes" solo si realmente faltan datos.
+                Usa tablas Markdown solo para comparaciones cortas (máximo 6 columnas y 10 filas). Para listas de videos usa viñetas con título, tipo, vistas y retención. No pegues JSON, SQL ni objetos internos en la respuesta.
+                Cada recomendación debe incluir: acción, motivo basado en un dato y cómo medirla. Separa cada idea en párrafos cortos y evita repetir el resumen del canal.
                 - Si el mensaje del usuario era un saludo o una prueba, responde amablemente indicando que estás listo para analizar su canal.
                 - Analiza la RETENCIÓN (% consumido): Si la retención es baja (<30%), advierte que el problema está en el gancho o la estructura del video.
                 - Identifica OUTLIERS: Señala si un video triunfó por suerte/tema puntual o si es un patrón repetible.
