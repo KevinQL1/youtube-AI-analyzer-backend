@@ -2,8 +2,18 @@ import { query } from '#db/index';
 import { getYouTubeDataClient } from '#clients/youtubeDataClient';
 import { getYouTubeAnalyticsClient } from '#clients/youtubeAnalyticsClient';
 import { parseISO8601Duration } from '#utils/durationParser';
+import { env } from '#config/env';
 
-export const syncChannelData = async (channelId = '') => {
+let syncInProgress = false;
+
+export const syncChannelData = async (channelId = env.channelId) => {
+    if (!channelId) throw new Error('Configura CHANNEL_ID para sincronizar tu canal.');
+    if (syncInProgress) throw new Error('Ya hay una sincronización en curso. Espera a que termine.');
+    syncInProgress = true;
+    let syncRunId = null;
+    let analyticsStatus = 'completed';
+    let analyticsErrorMessage = null;
+    try {
     const youtube = getYouTubeDataClient(); // Instanciación síncrona
     const analytics = await getYouTubeAnalyticsClient();
 
@@ -34,6 +44,23 @@ export const syncChannelData = async (channelId = '') => {
         ]
     );
 
+    const syncRun = await query(
+        `INSERT INTO sync_runs (channel_id, status) VALUES ($1, 'running') RETURNING id`,
+        [channelId]
+    );
+    syncRunId = syncRun.rows[0]?.id || null;
+
+    const snapshotDate = new Date().toISOString().split('T')[0];
+    await query(
+        `INSERT INTO channel_analytics_daily (channel_id, record_date, subscribers, total_views, total_videos)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (channel_id, record_date) DO UPDATE SET
+            subscribers = EXCLUDED.subscribers,
+            total_views = EXCLUDED.total_views,
+            total_videos = EXCLUDED.total_videos`,
+        [channelId, snapshotDate, channel.statistics.subscriberCount, channel.statistics.viewCount, channel.statistics.videoCount]
+    );
+
     // 2. Extracción masiva de Vídeos (AHORA PRIMERO)
     const uploadsPlaylistId = channel.contentDetails.relatedPlaylists.uploads;
     let videoIds = [];
@@ -50,6 +77,37 @@ export const syncChannelData = async (channelId = '') => {
         nextPageToken = playlistRes.data.nextPageToken;
     } while (nextPageToken);
 
+    // Clasificacion oficial disponible en YouTube Analytics (creatorContentType).
+    const officialContentTypes = new Map();
+    try {
+        let startIndex = 1;
+        let totalResults = 0;
+        do {
+            const typeReport = await analytics.reports.query({
+                ids: 'channel==MINE',
+                startDate: '2019-01-01',
+                endDate: new Date().toISOString().split('T')[0],
+                metrics: 'views',
+                dimensions: 'video,creatorContentType',
+                sort: '-views',
+                maxResults: 200,
+                startIndex,
+            });
+            const typeRows = typeReport.data.rows || [];
+            for (const [videoId, creatorContentType] of typeRows) {
+                if (creatorContentType === 'SHORTS') officialContentTypes.set(videoId, 'shorts');
+                if (creatorContentType === 'VIDEO_ON_DEMAND') officialContentTypes.set(videoId, 'videoOnDemand');
+            }
+            totalResults = Number(typeReport.data.totalResults || typeRows.length);
+            startIndex += typeRows.length;
+            if (typeRows.length === 0) break;
+        } while (startIndex <= totalResults);
+    } catch (classificationError) {
+        analyticsStatus = 'partial';
+        analyticsErrorMessage = `Clasificacion oficial: ${classificationError.message}`;
+        console.warn('No se pudo obtener la clasificacion oficial de Shorts; se usara la deteccion de respaldo:', classificationError.message);
+    }
+
     // Procesar vídeos en bloques de 50
     for (let i = 0; i < videoIds.length; i += 50) {
         const chunk = videoIds.slice(i, i + 50);
@@ -60,7 +118,16 @@ export const syncChannelData = async (channelId = '') => {
 
         for (const item of videoDetailsRes.data.items) {
             const durationSeconds = parseISO8601Duration(item.contentDetails.duration);
-            const fallbackContentType = durationSeconds <= 180 ? 'shorts' : 'videoOnDemand';
+            const thumbnails = item.snippet.thumbnails || {};
+            const bestThumbnail = thumbnails.maxres || thumbnails.standard || thumbnails.high || thumbnails.medium || thumbnails.default;
+            const isPortrait = Boolean(bestThumbnail?.width && bestThumbnail?.height && bestThumbnail.height > bestThumbnail.width);
+            const mentionsShorts = /(^|[\s#])shorts\b/i.test(`${item.snippet.title || ''} ${item.snippet.description || ''}`);
+            // La API de YouTube no expone un campo único "esShort"; combinamos señales fiables
+            // y usamos duración como respaldo para no perder Shorts sin hashtag o miniatura vertical.
+            const fallbackType = durationSeconds <= 180 && (isPortrait || mentionsShorts || durationSeconds <= 60)
+                ? 'shorts'
+                : 'videoOnDemand';
+            const contentType = officialContentTypes.get(item.id) || fallbackType;
             const tags = item.snippet.tags || [];
 
             await query(
@@ -78,7 +145,7 @@ export const syncChannelData = async (channelId = '') => {
                     likes = EXCLUDED.likes,
                     comments = EXCLUDED.comments,
                     views = EXCLUDED.views,
-                    content_type = COALESCE(videos.content_type, EXCLUDED.content_type),
+                    content_type = EXCLUDED.content_type,
                     updated_at = NOW();`,
                 [
                     item.id,
@@ -93,7 +160,7 @@ export const syncChannelData = async (channelId = '') => {
                     item.statistics.likeCount || 0,
                     item.statistics.commentCount || 0,
                     item.statistics.viewCount || 0,
-                    fallbackContentType,
+                    contentType,
                 ]
             );
         }
@@ -156,23 +223,29 @@ export const syncChannelData = async (channelId = '') => {
         nextPlaylistPageToken = playlistsRes.data.nextPageToken;
     } while (nextPlaylistPageToken);
 
-    // 4. YouTube Analytics
+    // 4. Analíticas diarias por vídeo de los últimos 30 días
     const todayStr = new Date().toISOString().split('T')[0];
+    const startDate = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     try {
+        let startIndex = 1;
+        let totalResults = 0;
+        do {
         const analyticsRes = await analytics.reports.query({
             ids: 'channel==MINE',
-            startDate: '2024-01-01',
+            startDate,
             endDate: todayStr,
             metrics: 'views,likes,comments,subscribersGained,subscribersLost,estimatedMinutesWatched,averageViewDuration',
-            dimensions: 'video',
-            sort: '-views',
+            dimensions: 'day,video',
+            sort: 'day,-views',
             maxResults: 200,
+            startIndex,
         });
 
         const rows = analyticsRes.data.rows || [];
         for (const row of rows) {
             const [
+                recordDate,
                 videoId,
                 views,
                 likes,
@@ -196,12 +269,33 @@ export const syncChannelData = async (channelId = '') => {
                     subscribers_lost = EXCLUDED.subscribers_lost,
                     estimated_minutes_watched = EXCLUDED.estimated_minutes_watched,
                     average_view_duration_seconds = EXCLUDED.average_view_duration_seconds;`,
-                [videoId, todayStr, views, likes, comments, subscribersGained, subscribersLost, estimatedMinutes, avgDuration]
+                [videoId, recordDate, views, likes, comments, subscribersGained, subscribersLost, estimatedMinutes, avgDuration]
             );
         }
+        totalResults = Number(analyticsRes.data.totalResults || rows.length);
+        startIndex += rows.length;
+        if (rows.length === 0) break;
+        } while (startIndex <= totalResults);
     } catch (analyticsError) {
+        analyticsStatus = 'partial';
+        analyticsErrorMessage = analyticsError.message;
         console.warn('⚠️ No se pudieron obtener las analíticas de YouTube:', analyticsError.message);
     }
 
-    return { success: true, totalVideosSynced: videoIds.length };
+    if (syncRunId) {
+        await query(
+            `UPDATE sync_runs SET status = $2, videos_synced = $3,
+             analytics_window_start = $4, analytics_window_end = $5, error_message = $6, finished_at = NOW() WHERE id = $1`,
+            [syncRunId, analyticsStatus, videoIds.length, startDate, todayStr, analyticsErrorMessage]
+        );
+    }
+    return { success: true, partial: analyticsStatus === 'partial', analyticsError: analyticsErrorMessage, totalVideosSynced: videoIds.length, analyticsWindowStart: startDate, analyticsWindowEnd: todayStr };
+    } catch (error) {
+        if (syncRunId) {
+            await query(`UPDATE sync_runs SET status = 'failed', error_message = $2, finished_at = NOW() WHERE id = $1`, [syncRunId, error.message]).catch(() => {});
+        }
+        throw error;
+    } finally {
+        syncInProgress = false;
+    }
 };

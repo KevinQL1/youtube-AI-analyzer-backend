@@ -11,6 +11,51 @@ CREATE TABLE IF NOT EXISTS channels (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Historial para medir crecimiento real del canal
+CREATE TABLE IF NOT EXISTS channel_analytics_daily (
+  channel_id VARCHAR(255) REFERENCES channels(channel_id) ON DELETE CASCADE,
+  record_date DATE NOT NULL,
+  subscribers BIGINT,
+  total_views BIGINT,
+  total_videos INT,
+  PRIMARY KEY (channel_id, record_date)
+);
+
+-- Perfil persistente del creador para personalizar las recomendaciones de la IA
+CREATE TABLE IF NOT EXISTS creator_profiles (
+  channel_id VARCHAR(255) PRIMARY KEY REFERENCES channels(channel_id) ON DELETE CASCADE,
+  niche VARCHAR(255),
+  target_audience TEXT,
+  goals TEXT,
+  preferred_tone VARCHAR(100),
+  upload_frequency VARCHAR(100),
+  notes TEXT,
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS conversation_messages (
+  id BIGSERIAL PRIMARY KEY,
+  channel_id VARCHAR(255) REFERENCES channels(channel_id) ON DELETE CASCADE,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sync_runs (
+  id BIGSERIAL PRIMARY KEY,
+  channel_id VARCHAR(255) REFERENCES channels(channel_id) ON DELETE CASCADE,
+  status VARCHAR(20) NOT NULL CHECK (status IN ('running', 'completed', 'partial', 'failed')),
+  videos_synced INT DEFAULT 0,
+  analytics_window_start DATE,
+  analytics_window_end DATE,
+  error_message TEXT,
+  started_at TIMESTAMP DEFAULT NOW(),
+  finished_at TIMESTAMP
+);
+
+ALTER TABLE sync_runs DROP CONSTRAINT IF EXISTS sync_runs_status_check;
+ALTER TABLE sync_runs ADD CONSTRAINT sync_runs_status_check CHECK (status IN ('running', 'completed', 'partial', 'failed'));
+
 -- 3. Tabla de Vídeos
 CREATE TABLE IF NOT EXISTS videos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -66,3 +111,15 @@ CREATE TABLE IF NOT EXISTS playlist_items (
   position INT,
   PRIMARY KEY (playlist_id, video_id)
 );
+
+CREATE INDEX IF NOT EXISTS idx_videos_channel_id ON videos(channel_id);
+CREATE INDEX IF NOT EXISTS idx_videos_content_type ON videos(content_type);
+CREATE INDEX IF NOT EXISTS idx_videos_published_at ON videos(published_at);
+CREATE INDEX IF NOT EXISTS idx_video_analytics_date ON video_analytics_daily(record_date);
+CREATE INDEX IF NOT EXISTS idx_video_analytics_video ON video_analytics_daily(video_id);
+CREATE INDEX IF NOT EXISTS idx_video_analytics_video_date ON video_analytics_daily(video_id, record_date DESC);
+CREATE INDEX IF NOT EXISTS idx_playlists_channel_id ON playlists(channel_id);
+CREATE INDEX IF NOT EXISTS idx_playlist_items_video_id ON playlist_items(video_id);
+CREATE INDEX IF NOT EXISTS idx_channels_updated_at ON channels(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_conversation_messages_channel_date ON conversation_messages(channel_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sync_runs_channel_date ON sync_runs(channel_id, started_at DESC);
