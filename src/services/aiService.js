@@ -101,6 +101,24 @@ export const askChannelAI = async (userQuestion) => {
         `, [channelContext.channel_id])
         : { rows: [] };
     const analyticsSummary = analyticsSnapshot.rows[0] || null;
+    const topVideoAnalyticsSnapshot = channelContext
+        ? await query(`
+            SELECT v.video_id, v.title, v.content_type, v.views, v.likes, v.comments,
+                   v.duration_seconds,
+                   ROUND(AVG(va.average_view_duration_seconds)::numeric, 2) AS average_view_duration_seconds,
+                   ROUND((AVG(va.average_view_duration_seconds)::numeric / NULLIF(v.duration_seconds, 0)) * 100, 2) AS retention_percentage,
+                   COALESCE(SUM(va.views), 0)::bigint AS analytics_views,
+                   COALESCE(SUM(va.estimated_minutes_watched), 0)::numeric AS estimated_minutes_watched,
+                   COALESCE(SUM(va.subscribers_gained), 0)::int AS subscribers_gained,
+                   COALESCE(SUM(va.subscribers_lost), 0)::int AS subscribers_lost
+            FROM videos v
+            LEFT JOIN video_analytics_daily va ON v.video_id = va.video_id
+            WHERE v.channel_id = $1 AND v.publication_status = 'published'
+            GROUP BY v.video_id, v.title, v.content_type, v.views, v.likes, v.comments, v.duration_seconds
+            ORDER BY v.views DESC
+            LIMIT 20
+        `, [channelContext.channel_id])
+        : { rows: [] };
     const historySnapshot = channelContext
         ? await query('SELECT role, content, created_at FROM conversation_messages WHERE channel_id = $1 ORDER BY created_at DESC LIMIT 12', [channelContext.channel_id])
         : { rows: [] };
@@ -206,6 +224,7 @@ export const askChannelAI = async (userQuestion) => {
                 Tambien eres experto en ideas de contenido, titulos, miniaturas, guiones, SEO, calendario editorial, Shorts, comunidad y monetizacion. No inventes metricas ni prometas viralidad.
                 Usa siempre oldest_video_bogota_date y newest_video_bogota_date para calcular la antiguedad y el periodo real de actividad. Nunca asumas que el canal tiene uno o dos años por el numero de videos.
                 El bloque analyticsSummary contiene métricas calculadas directamente en PostgreSQL. Si videos_with_analytics es mayor que cero, usa esas métricas para el diagnóstico.
+                El bloque topVideoAnalyticsSnapshot contiene métricas por video; úsalo para señalar títulos, videos destacados y diferencias entre Shorts y videos largos. No detengas el diagnóstico por una métrica que el API no entregue: explica la limitación en una sola frase y continúa con los datos disponibles.
                 Si una métrica no aparece en los datos recibidos (por ejemplo CTR, impresiones o retención), dilo claramente como dato no disponible y no la sustituyas por porcentajes inventados ni hipótesis presentadas como hechos.
                 - Si el mensaje del usuario era un saludo o una prueba, responde amablemente indicando que estás listo para analizar su canal.
                 - Analiza la RETENCIÓN (% consumido): Si la retención es baja (<30%), advierte que el problema está en el gancho o la estructura del video.
@@ -214,7 +233,7 @@ export const askChannelAI = async (userQuestion) => {
             },
             {
                 role: 'user',
-                content: `Pregunta del creador: "${userQuestion}"\n\n${syncResult ? `Sincronizacion terminada: ${syncResult.totalVideosSynced} videos procesados. ` : ''}Resumen actual del canal (usa estos datos siempre que sean relevantes):\n${JSON.stringify(channelContext)}\n\nResumen analítico calculado por PostgreSQL:\n${JSON.stringify(analyticsSummary)}\n\nPerfil y objetivos del creador:\n${JSON.stringify(creatorProfile)}\n\nConversacion reciente (solo contexto breve):\n${JSON.stringify(compactHistory)}\n\nDatos de la consulta (muestra limitada; no inventes datos fuera de ella):\n${JSON.stringify(compactDbData)}`
+                content: `Pregunta del creador: "${userQuestion}"\n\n${syncResult ? `Sincronizacion terminada: ${syncResult.totalVideosSynced} videos procesados. ` : ''}Resumen actual del canal (usa estos datos siempre que sean relevantes):\n${JSON.stringify(channelContext)}\n\nResumen analítico calculado por PostgreSQL:\n${JSON.stringify(analyticsSummary)}\n\nRendimiento de los 20 videos publicados con más vistas:\n${JSON.stringify(topVideoAnalyticsSnapshot.rows)}\n\nPerfil y objetivos del creador:\n${JSON.stringify(creatorProfile)}\n\nConversacion reciente (solo contexto breve):\n${JSON.stringify(compactHistory)}\n\nDatos de la consulta (muestra limitada; no inventes datos fuera de ella):\n${JSON.stringify(compactDbData)}`
             }
         ],
         model: 'openai/gpt-oss-120b',
