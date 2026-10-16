@@ -154,3 +154,26 @@ El frontend puede construirse sobre estas rutas con cuatro vistas:
 4. Biblioteca analitica: videos, Shorts, playlists, historiales y comparaciones.
 
 La aplicacion esta pensada para uso personal. Si se publica fuera de una red privada, conviene añadir una clave de acceso sencilla para proteger la cuota de YouTube, Groq y PostgreSQL.
+
+### YouTube Reporting API (alcance)
+
+El backend integra el YouTube Reporting API para obtener impresiones y CTR de miniaturas mediante el informe `channel_reach_basic_a1`. Estos informes son diarios y YouTube puede tardar hasta 24 horas en generar el primero.
+
+Endpoints:
+
+- `POST /api/reporting/setup`: crea o reutiliza el job de alcance del canal.
+- `POST /api/reporting/sync`: descarga e importa los informes disponibles.
+- `GET /api/reporting/status`: muestra el job activo, filas importadas, impresiones, CTR promedio y fecha del ultimo informe.
+
+La integracion guarda los datos en `youtube_reach_daily`. El esquema se crea y migra automaticamente al iniciar el servidor. El token OAuth debe incluir `https://www.googleapis.com/auth/yt-analytics.readonly` y el proyecto de Google Cloud debe tener habilitado **YouTube Reporting API**.
+
+El informe puede devolver cero filas durante las primeras 24 horas o cuando YouTube no tenga datos suficientes. En ese caso la aplicacion conserva el resto de Analytics y marca el alcance como pendiente.
+
+### Historial analitico
+
+La sincronizacion consulta hasta un aÃ±o de Analytics diario para permitir comparaciones de crecimiento, retencion, tiempo visto y suscriptores ganados/perdidos. Los informes pueden quedar parciales cuando YouTube aplica restricciones de compatibilidad o privacidad; esos errores se registran en `sync_runs`.
+
+### Tablas adicionales
+
+- `channel_analytics_insights`: snapshots agregados de fuentes de trafico y demografia.
+- `youtube_reach_daily`: impresiones y CTR diarios por video importados del Reporting API.
