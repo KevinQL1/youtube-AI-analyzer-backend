@@ -15,7 +15,7 @@ Tablas de PostgreSQL disponibles:
 4. conversation_messages (channel_id, role, content, created_at)
 5. playlists (playlist_id, channel_id, title, description, item_count, published_at, updated_at)
 6. playlist_items (playlist_id, video_id, position)
-7. videos (video_id, channel_id, title, description, tags [TEXT[]], published_at, duration_seconds, privacy_status, thumbnail_url, likes, comments, views, content_type ['shorts' | 'videoOnDemand'], updated_at)
+7. videos (video_id, channel_id, title, description, tags [TEXT[]], published_at, scheduled_at, publication_status ['published' | 'scheduled' | 'private' | 'unlisted'], duration_seconds, privacy_status, thumbnail_url, likes, comments, views, content_type ['shorts' | 'videoOnDemand'], updated_at)
 8. video_analytics_daily (video_id, record_date, views, likes, comments, subscribers_gained, subscribers_lost, estimated_minutes_watched, average_view_duration_seconds)
 
 MÉTRICAS CLAVE Y REGLAS SQL OBLIGATORIAS:

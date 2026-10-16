@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS videos (
   description TEXT,
   tags TEXT[],
   published_at TIMESTAMP,
+  scheduled_at TIMESTAMP,
+  publication_status VARCHAR(30) DEFAULT 'unknown',
   duration_seconds INT,
   content_type VARCHAR(50),
   privacy_status VARCHAR(50),
@@ -77,6 +79,8 @@ CREATE TABLE IF NOT EXISTS videos (
 
 -- Parche de migración: Agrega la columna si la tabla 'videos' ya existía de antes
 ALTER TABLE videos ADD COLUMN IF NOT EXISTS tags TEXT[];
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP;
+ALTER TABLE videos ADD COLUMN IF NOT EXISTS publication_status VARCHAR(30) DEFAULT 'unknown';
 
 -- 4. Tabla de Analítica Diaria por Vídeo
 CREATE TABLE IF NOT EXISTS video_analytics_daily (

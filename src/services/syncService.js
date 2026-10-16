@@ -129,17 +129,27 @@ export const syncChannelData = async (channelId = env.channelId) => {
                 ? 'shorts'
                 : 'videoOnDemand';
             const contentType = officialContentTypes.get(item.id) || fallbackType;
+            const scheduledAt = item.status.publishAt || null;
+            const publicationStatus = item.status.privacyStatus === 'public'
+                ? 'published'
+                : item.status.privacyStatus === 'unlisted'
+                    ? 'unlisted'
+                    : scheduledAt && new Date(scheduledAt) > new Date()
+                        ? 'scheduled'
+                        : 'private';
             const tags = item.snippet.tags || [];
 
             await query(
                 `INSERT INTO videos 
-                 (video_id, channel_id, title, description, tags, published_at, duration_seconds, privacy_status, thumbnail_url, likes, comments, views, content_type, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
+                 (video_id, channel_id, title, description, tags, published_at, scheduled_at, publication_status, duration_seconds, privacy_status, thumbnail_url, likes, comments, views, content_type, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW())
                  ON CONFLICT (video_id) DO UPDATE SET
                     title = EXCLUDED.title,
                     description = EXCLUDED.description,
                     tags = EXCLUDED.tags,
                     published_at = EXCLUDED.published_at,
+                    scheduled_at = EXCLUDED.scheduled_at,
+                    publication_status = EXCLUDED.publication_status,
                     duration_seconds = EXCLUDED.duration_seconds,
                     privacy_status = EXCLUDED.privacy_status,
                     thumbnail_url = EXCLUDED.thumbnail_url,
@@ -155,6 +165,8 @@ export const syncChannelData = async (channelId = env.channelId) => {
                     item.snippet.description,
                     tags,
                     item.snippet.publishedAt,
+                    scheduledAt,
+                    publicationStatus,
                     durationSeconds,
                     item.status.privacyStatus,
                     item.snippet.thumbnails?.high?.url || item.snippet.thumbnails?.default?.url,
