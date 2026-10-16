@@ -30,7 +30,7 @@ const parseCsv = (csv) => {
 
 export const listReportingJobs = async () => {
     const reporting = getYouTubeReportingClient();
-    const response = await reporting.jobs.list({ includeSystemManaged: false, maxResults: 100 });
+    const response = await reporting.jobs.list({ includeSystemManaged: false, pageSize: 100 });
     return response.data.jobs || [];
 };
 
@@ -51,7 +51,7 @@ export const ensureReachReportingJob = async () => {
 export const syncReachReports = async () => {
     const reporting = getYouTubeReportingClient();
     const job = await ensureReachReportingJob();
-    const reportsResponse = await reporting.jobs.reports.list({ jobId: job.id, maxResults: 100 });
+    const reportsResponse = await reporting.jobs.reports.list({ jobId: job.id, pageSize: 100 });
     const reports = reportsResponse.data.reports || [];
     let importedRows = 0;
 
