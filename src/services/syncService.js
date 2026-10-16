@@ -238,7 +238,9 @@ export const syncChannelData = async (channelId = env.channelId) => {
 
     // 4. Analíticas diarias por vídeo de los últimos 30 días
     const todayStr = new Date().toISOString().split('T')[0];
-    const startDate = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    // Conservamos hasta un año de historial para que el análisis compare
+    // todos los videos de un canal reciente, no solo los últimos 30 días.
+    const startDate = new Date(Date.now() - 364 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
     try {
         let startIndex = 1;
