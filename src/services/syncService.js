@@ -76,6 +76,7 @@ export const syncChannelData = async (channelId = env.channelId) => {
         videoIds = videoIds.concat(playlistRes.data.items.map((item) => item.contentDetails.videoId));
         nextPageToken = playlistRes.data.nextPageToken;
     } while (nextPageToken);
+    const analyticsVideoIds = videoIds.slice(0, 500);
 
     // Clasificacion oficial disponible en YouTube Analytics (creatorContentType).
     const officialContentTypes = new Map();
@@ -85,16 +86,16 @@ export const syncChannelData = async (channelId = env.channelId) => {
         do {
             const typeReport = await analytics.reports.query({
                 ids: 'channel==MINE',
-                startDate: '2019-01-01',
+                startDate: new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
                 endDate: new Date().toISOString().split('T')[0],
                 metrics: 'views',
-                dimensions: 'video,creatorContentType',
-                sort: '-views',
+                dimensions: 'day,video,creatorContentType',
+                filters: `video==${analyticsVideoIds.join(',')}`,
                 maxResults: 200,
                 startIndex,
             });
             const typeRows = typeReport.data.rows || [];
-            for (const [videoId, creatorContentType] of typeRows) {
+            for (const [, videoId, creatorContentType] of typeRows) {
                 if (creatorContentType === 'SHORTS') officialContentTypes.set(videoId, 'shorts');
                 if (creatorContentType === 'VIDEO_ON_DEMAND') officialContentTypes.set(videoId, 'videoOnDemand');
             }
@@ -236,8 +237,8 @@ export const syncChannelData = async (channelId = env.channelId) => {
             startDate,
             endDate: todayStr,
             metrics: 'views,likes,comments,subscribersGained,subscribersLost,estimatedMinutesWatched,averageViewDuration',
-            dimensions: 'day,video',
-            sort: 'day,-views',
+            dimensions: 'day,video,creatorContentType',
+            filters: `video==${analyticsVideoIds.join(',')}`,
             maxResults: 200,
             startIndex,
         });
@@ -247,6 +248,7 @@ export const syncChannelData = async (channelId = env.channelId) => {
             const [
                 recordDate,
                 videoId,
+                creatorContentType,
                 views,
                 likes,
                 comments,
@@ -271,6 +273,8 @@ export const syncChannelData = async (channelId = env.channelId) => {
                     average_view_duration_seconds = EXCLUDED.average_view_duration_seconds;`,
                 [videoId, recordDate, views, likes, comments, subscribersGained, subscribersLost, estimatedMinutes, avgDuration]
             );
+            if (creatorContentType === 'SHORTS') officialContentTypes.set(videoId, 'shorts');
+            if (creatorContentType === 'VIDEO_ON_DEMAND') officialContentTypes.set(videoId, 'videoOnDemand');
         }
         totalResults = Number(analyticsRes.data.totalResults || rows.length);
         startIndex += rows.length;
