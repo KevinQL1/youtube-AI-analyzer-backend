@@ -133,7 +133,15 @@ export const askChannelAI = async (userQuestion) => {
         dbData = dbResult.rows;
     } catch (dbError) {
         console.error(`❌ [Error SQL]: ${dbError.message} | Query:\n${generatedSql}`);
-        throw new Error(`Error en la consulta SQL generada (${generatedSql}): ${dbError.message}`);
+        // Una consulta generada puede ser válida en intención pero contener
+        // sintaxis que PostgreSQL no acepta. Usamos un resumen seguro como
+        // respaldo para que el chat pueda continuar respondiendo.
+        generatedSql = `SELECT title, subscribers, total_views, total_videos, updated_at
+                        FROM channels
+                        WHERE channel_id = $1
+                        LIMIT 1;`;
+        const fallbackResult = await query(generatedSql, [channelContext.channel_id]);
+        dbData = fallbackResult.rows;
     }
 
     // 3. Sintetizar la respuesta como Senior YouTube Growth Consultant
