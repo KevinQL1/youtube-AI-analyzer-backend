@@ -235,6 +235,9 @@ export const askChannelAI = async (userQuestion) => {
                 El bloque audienceInsights contiene fuentes de tráfico y demografía agregada. Úsalo cuando exista y menciona si YouTube lo entregó con umbral o sin filas.
                 El bloque topVideoAnalyticsSnapshot contiene métricas por video; úsalo para señalar títulos, videos destacados y diferencias entre Shorts y videos largos. No detengas el diagnóstico por una métrica que el API no entregue: explica la limitación en una sola frase y continúa con los datos disponibles.
                 Si una métrica no aparece en los datos recibidos (por ejemplo CTR, impresiones o retención), dilo claramente como dato no disponible y no la sustituyas por porcentajes inventados ni hipótesis presentadas como hechos.
+                Si average_view_duration_seconds o retention_percentage tienen valor para un video, no digas que el tiempo medio de visualización está ausente; indica solo qué videos no tienen filas de Analytics.
+                No afirmes que una duración concreta garantiza una retención determinada. Presenta las duraciones como hipótesis de prueba basadas en los datos del canal.
+                Cuando no haya demografía o fuentes de tráfico, explica que YouTube puede ocultar datos por umbrales de privacidad o volumen. No recomiendes activar una supuesta audiencia avanzada.
                 - Si el mensaje del usuario era un saludo o una prueba, responde amablemente indicando que estás listo para analizar su canal.
                 - Analiza la RETENCIÓN (% consumido): Si la retención es baja (<30%), advierte que el problema está en el gancho o la estructura del video.
                 - Identifica OUTLIERS: Señala si un video triunfó por suerte/tema puntual o si es un patrón repetible.
