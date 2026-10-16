@@ -60,7 +60,13 @@ export const askChannelAI = async (userQuestion) => {
         SELECT c.*, COUNT(v.video_id)::int AS stored_video_count,
                COALESCE(SUM(v.views), 0)::bigint AS stored_video_views,
                COALESCE(SUM(v.likes), 0)::bigint AS stored_video_likes,
-               COALESCE(SUM(v.comments), 0)::bigint AS stored_video_comments
+               COALESCE(SUM(v.comments), 0)::bigint AS stored_video_comments,
+               MIN(v.published_at) AS oldest_video_published_at,
+               MAX(v.published_at) AS newest_video_published_at,
+               COUNT(v.video_id) FILTER (WHERE v.publication_status = 'published')::int AS published_video_count,
+               COUNT(v.video_id) FILTER (WHERE v.publication_status = 'scheduled')::int AS scheduled_video_count,
+               COUNT(v.video_id) FILTER (WHERE v.content_type = 'shorts')::int AS shorts_count,
+               COUNT(v.video_id) FILTER (WHERE v.content_type = 'videoOnDemand')::int AS long_videos_count
         FROM channels c
         LEFT JOIN videos v ON v.channel_id = c.channel_id
         GROUP BY c.channel_id
@@ -136,10 +142,17 @@ export const askChannelAI = async (userQuestion) => {
         // Una consulta generada puede ser válida en intención pero contener
         // sintaxis que PostgreSQL no acepta. Usamos un resumen seguro como
         // respaldo para que el chat pueda continuar respondiendo.
-        generatedSql = `SELECT title, subscribers, total_views, total_videos, updated_at
-                        FROM channels
-                        WHERE channel_id = $1
-                        LIMIT 1;`;
+        generatedSql = `SELECT c.title, c.subscribers, c.total_views, c.total_videos, c.updated_at,
+                               MIN(v.published_at) AS oldest_video_published_at,
+                               MAX(v.published_at) AS newest_video_published_at,
+                               COUNT(v.video_id) FILTER (WHERE v.publication_status = 'published')::int AS published_video_count,
+                               COUNT(v.video_id) FILTER (WHERE v.publication_status = 'scheduled')::int AS scheduled_video_count,
+                               COUNT(v.video_id) FILTER (WHERE v.content_type = 'shorts')::int AS shorts_count,
+                               COUNT(v.video_id) FILTER (WHERE v.content_type = 'videoOnDemand')::int AS long_videos_count
+                        FROM channels c
+                        LEFT JOIN videos v ON v.channel_id = c.channel_id
+                        WHERE c.channel_id = $1
+                        GROUP BY c.channel_id;`;
         const fallbackResult = await query(generatedSql, [channelContext.channel_id]);
         dbData = fallbackResult.rows;
     }
@@ -154,6 +167,8 @@ export const askChannelAI = async (userQuestion) => {
                 INSTRUCCIONES DE RESPUESTA:
                 El resumen del canal incluye suscriptores, vistas totales, cantidad de videos y fecha de actualización. Menciónalos cuando respondan a la pregunta y nunca los confundas con las vistas sumadas de videos.
                 Tambien eres experto en ideas de contenido, titulos, miniaturas, guiones, SEO, calendario editorial, Shorts, comunidad y monetizacion. No inventes metricas ni prometas viralidad.
+                Usa siempre oldest_video_published_at y newest_video_published_at para calcular la antiguedad y el periodo real de actividad. Nunca asumas que el canal tiene uno o dos años por el numero de videos.
+                Si una métrica no aparece en los datos recibidos (por ejemplo CTR, impresiones o retención), dilo claramente como dato no disponible y no la sustituyas por porcentajes inventados ni hipótesis presentadas como hechos.
                 - Si el mensaje del usuario era un saludo o una prueba, responde amablemente indicando que estás listo para analizar su canal.
                 - Analiza la RETENCIÓN (% consumido): Si la retención es baja (<30%), advierte que el problema está en el gancho o la estructura del video.
                 - Identifica OUTLIERS: Señala si un video triunfó por suerte/tema puntual o si es un patrón repetible.
