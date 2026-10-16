@@ -101,6 +101,14 @@ export const askChannelAI = async (userQuestion) => {
         `, [channelContext.channel_id])
         : { rows: [] };
     const analyticsSummary = analyticsSnapshot.rows[0] || null;
+    const insightsSnapshot = channelContext
+        ? await query(`
+            SELECT insight_type, period_start, period_end, data, updated_at
+            FROM channel_analytics_insights
+            WHERE channel_id = $1
+            ORDER BY updated_at DESC
+        `, [channelContext.channel_id])
+        : { rows: [] };
     const topVideoAnalyticsSnapshot = channelContext
         ? await query(`
             SELECT v.video_id, v.title, v.content_type, v.views, v.likes, v.comments,
@@ -224,6 +232,7 @@ export const askChannelAI = async (userQuestion) => {
                 Tambien eres experto en ideas de contenido, titulos, miniaturas, guiones, SEO, calendario editorial, Shorts, comunidad y monetizacion. No inventes metricas ni prometas viralidad.
                 Usa siempre oldest_video_bogota_date y newest_video_bogota_date para calcular la antiguedad y el periodo real de actividad. Nunca asumas que el canal tiene uno o dos años por el numero de videos.
                 El bloque analyticsSummary contiene métricas calculadas directamente en PostgreSQL. Si videos_with_analytics es mayor que cero, usa esas métricas para el diagnóstico.
+                El bloque audienceInsights contiene fuentes de tráfico y demografía agregada. Úsalo cuando exista y menciona si YouTube lo entregó con umbral o sin filas.
                 El bloque topVideoAnalyticsSnapshot contiene métricas por video; úsalo para señalar títulos, videos destacados y diferencias entre Shorts y videos largos. No detengas el diagnóstico por una métrica que el API no entregue: explica la limitación en una sola frase y continúa con los datos disponibles.
                 Si una métrica no aparece en los datos recibidos (por ejemplo CTR, impresiones o retención), dilo claramente como dato no disponible y no la sustituyas por porcentajes inventados ni hipótesis presentadas como hechos.
                 - Si el mensaje del usuario era un saludo o una prueba, responde amablemente indicando que estás listo para analizar su canal.
@@ -233,7 +242,7 @@ export const askChannelAI = async (userQuestion) => {
             },
             {
                 role: 'user',
-                content: `Pregunta del creador: "${userQuestion}"\n\n${syncResult ? `Sincronizacion terminada: ${syncResult.totalVideosSynced} videos procesados. ` : ''}Resumen actual del canal (usa estos datos siempre que sean relevantes):\n${JSON.stringify(channelContext)}\n\nResumen analítico calculado por PostgreSQL:\n${JSON.stringify(analyticsSummary)}\n\nRendimiento de los 20 videos publicados con más vistas:\n${JSON.stringify(topVideoAnalyticsSnapshot.rows)}\n\nPerfil y objetivos del creador:\n${JSON.stringify(creatorProfile)}\n\nConversacion reciente (solo contexto breve):\n${JSON.stringify(compactHistory)}\n\nDatos de la consulta (muestra limitada; no inventes datos fuera de ella):\n${JSON.stringify(compactDbData)}`
+                content: `Pregunta del creador: "${userQuestion}"\n\n${syncResult ? `Sincronizacion terminada: ${syncResult.totalVideosSynced} videos procesados. ` : ''}Resumen actual del canal (usa estos datos siempre que sean relevantes):\n${JSON.stringify(channelContext)}\n\nResumen analítico calculado por PostgreSQL:\n${JSON.stringify(analyticsSummary)}\n\nRendimiento de los 20 videos publicados con más vistas:\n${JSON.stringify(topVideoAnalyticsSnapshot.rows)}\n\nAudiencia (fuentes de tráfico y demografía):\n${JSON.stringify(insightsSnapshot.rows)}\n\nPerfil y objetivos del creador:\n${JSON.stringify(creatorProfile)}\n\nConversacion reciente (solo contexto breve):\n${JSON.stringify(compactHistory)}\n\nDatos de la consulta (muestra limitada; no inventes datos fuera de ella):\n${JSON.stringify(compactDbData)}`
             }
         ],
         model: 'openai/gpt-oss-120b',

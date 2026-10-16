@@ -299,6 +299,38 @@ export const syncChannelData = async (channelId = env.channelId) => {
         console.warn('⚠️ No se pudieron obtener las analíticas de YouTube:', analyticsError.message);
     }
 
+    // 5. Informes agregados de audiencia: fuentes de tráfico y demografía.
+    const saveInsight = async (insightType, rows) => {
+        await query(
+            `INSERT INTO channel_analytics_insights (channel_id, insight_type, period_start, period_end, data, updated_at)
+             VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
+             ON CONFLICT (channel_id, insight_type, period_start, period_end) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+            [channelId, insightType, startDate, todayStr, JSON.stringify(rows)]
+        );
+    };
+    try {
+        const trafficReport = await analytics.reports.query({
+            ids: 'channel==MINE', startDate, endDate: todayStr,
+            metrics: 'views,estimatedMinutesWatched', dimensions: 'insightTrafficSourceType', maxResults: 50,
+        });
+        await saveInsight('traffic_sources', trafficReport.data.rows || []);
+    } catch (trafficError) {
+        analyticsStatus = 'partial';
+        analyticsErrorMessage = [analyticsErrorMessage, `Fuentes de tráfico: ${trafficError.message}`].filter(Boolean).join(' | ');
+        console.warn('No se pudieron obtener las fuentes de tráfico:', trafficError.message);
+    }
+    try {
+        const demographicReport = await analytics.reports.query({
+            ids: 'channel==MINE', startDate, endDate: todayStr,
+            metrics: 'viewerPercentage', dimensions: 'ageGroup,gender', maxResults: 50,
+        });
+        await saveInsight('demographics', demographicReport.data.rows || []);
+    } catch (demographicError) {
+        analyticsStatus = 'partial';
+        analyticsErrorMessage = [analyticsErrorMessage, `Demografía: ${demographicError.message}`].filter(Boolean).join(' | ');
+        console.warn('No se pudo obtener la demografía:', demographicError.message);
+    }
+
     if (syncRunId) {
         await query(
             `UPDATE sync_runs SET status = $2, videos_synced = $3,

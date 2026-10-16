@@ -97,6 +97,17 @@ CREATE TABLE IF NOT EXISTS video_analytics_daily (
   UNIQUE(video_id, record_date)
 );
 
+-- Snapshots de informes agregados de audiencia para el contexto de la IA
+CREATE TABLE IF NOT EXISTS channel_analytics_insights (
+  channel_id VARCHAR(255) REFERENCES channels(channel_id) ON DELETE CASCADE,
+  insight_type VARCHAR(50) NOT NULL,
+  period_start DATE NOT NULL,
+  period_end DATE NOT NULL,
+  data JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMP DEFAULT NOW(),
+  PRIMARY KEY (channel_id, insight_type, period_start, period_end)
+);
+
 -- 5. Tabla de Playlists
 CREATE TABLE IF NOT EXISTS playlists (
   playlist_id VARCHAR(100) PRIMARY KEY,
@@ -122,6 +133,7 @@ CREATE INDEX IF NOT EXISTS idx_videos_published_at ON videos(published_at);
 CREATE INDEX IF NOT EXISTS idx_video_analytics_date ON video_analytics_daily(record_date);
 CREATE INDEX IF NOT EXISTS idx_video_analytics_video ON video_analytics_daily(video_id);
 CREATE INDEX IF NOT EXISTS idx_video_analytics_video_date ON video_analytics_daily(video_id, record_date DESC);
+CREATE INDEX IF NOT EXISTS idx_channel_insights_type ON channel_analytics_insights(channel_id, insight_type, updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_playlists_channel_id ON playlists(channel_id);
 CREATE INDEX IF NOT EXISTS idx_playlist_items_video_id ON playlist_items(video_id);
 CREATE INDEX IF NOT EXISTS idx_channels_updated_at ON channels(updated_at DESC);
