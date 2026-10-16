@@ -7,6 +7,26 @@ const groq = new Groq({ apiKey: env.groqApiKey });
 const isRefreshRequest = (text) => /\b(actualiza|actualizar|actualízame|actualizame|sincroniza|sincronizar|refresca|refresh)\b.{0,80}\b(base de datos|datos|información|informacion|canal|youtube)?/i.test(text) || /\b(base de datos|datos|información|informacion)\b.{0,60}\b(actualizada|actualizar|al día|al dia|fresca)\b/i.test(text);
 
 // Esquema enriquecido con reglas avanzadas de retención y detección de anomalías
+// Detecta respuestas truncadas antes de enviarlas a PostgreSQL. El modelo puede
+// cortar una consulta larga a mitad de un CTE, dejando paréntesis sin cerrar.
+const hasBalancedParentheses = (sql) => {
+    let depth = 0;
+    let inString = false;
+    for (let index = 0; index < sql.length; index += 1) {
+        const char = sql[index];
+        if (char === "'") {
+            if (inString && sql[index + 1] === "'") index += 1;
+            else inString = !inString;
+        } else if (!inString && char === '(') {
+            depth += 1;
+        } else if (!inString && char === ')') {
+            depth -= 1;
+            if (depth < 0) return false;
+        }
+    }
+    return !inString && depth === 0;
+};
+
 const SCHEMA_CONTEXT = `
 Tablas de PostgreSQL disponibles:
 1. channels (channel_id, title, subscribers, total_views, total_videos, updated_at)
@@ -94,7 +114,7 @@ export const askChannelAI = async (userQuestion) => {
     // Validación básica: comprobar que el texto generado empiece con una instrucción SQL
     const normalizedSql = generatedSql.trim();
     const hasOnlyOneStatement = !normalizedSql.slice(0, -1).includes(';');
-    const isSql = normalizedSql.length <= 12000 && hasOnlyOneStatement &&
+    const isSql = normalizedSql.length <= 12000 && hasBalancedParentheses(normalizedSql) && hasOnlyOneStatement &&
         /^(SELECT|WITH|SHOW|EXPLAIN)\b/i.test(normalizedSql) &&
         !/\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|COPY|DO)\b/i.test(normalizedSql);
     if (!isSql) {
