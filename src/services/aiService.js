@@ -65,6 +65,8 @@ export const askChannelAI = async (userQuestion) => {
                MAX(v.published_at) AS newest_video_published_at,
                MIN(v.published_at)::date AS oldest_video_date,
                MAX(v.published_at)::date AS newest_video_date,
+               MIN((v.published_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Bogota'))::date AS oldest_video_bogota_date,
+               MAX((v.published_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Bogota'))::date AS newest_video_bogota_date,
                COUNT(v.video_id) FILTER (WHERE v.publication_status = 'published')::int AS published_video_count,
                COUNT(v.video_id) FILTER (WHERE v.publication_status = 'scheduled')::int AS scheduled_video_count,
                COUNT(v.video_id) FILTER (WHERE v.content_type = 'shorts')::int AS shorts_count,
@@ -80,6 +82,25 @@ export const askChannelAI = async (userQuestion) => {
         ? await query('SELECT niche, target_audience, goals, preferred_tone, upload_frequency, notes, updated_at FROM creator_profiles WHERE channel_id = $1', [channelContext.channel_id])
         : { rows: [] };
     const creatorProfile = profileSnapshot.rows[0] || null;
+    const analyticsSnapshot = channelContext
+        ? await query(`
+            SELECT
+              COUNT(DISTINCT v.video_id)::int AS videos_with_analytics,
+              COUNT(va.video_id)::int AS analytics_rows,
+              ROUND(AVG((va.average_view_duration_seconds::numeric / NULLIF(v.duration_seconds, 0)) * 100) FILTER (WHERE v.duration_seconds > 0), 2) AS avg_retention_percentage,
+              ROUND(AVG((va.average_view_duration_seconds::numeric / NULLIF(v.duration_seconds, 0)) * 100) FILTER (WHERE v.content_type = 'videoOnDemand' AND v.duration_seconds > 0), 2) AS avg_retention_long_videos,
+              ROUND(AVG((va.average_view_duration_seconds::numeric / NULLIF(v.duration_seconds, 0)) * 100) FILTER (WHERE v.content_type = 'shorts' AND v.duration_seconds > 0), 2) AS avg_retention_shorts,
+              COALESCE(SUM(va.views), 0)::bigint AS analytics_views,
+              COALESCE(SUM(va.estimated_minutes_watched), 0)::numeric AS estimated_minutes_watched,
+              COALESCE(SUM(va.subscribers_gained), 0)::int AS subscribers_gained,
+              COALESCE(SUM(va.subscribers_lost), 0)::int AS subscribers_lost,
+              MAX(va.record_date) AS latest_analytics_date
+            FROM videos v
+            LEFT JOIN video_analytics_daily va ON v.video_id = va.video_id
+            WHERE v.channel_id = $1 AND v.publication_status = 'published'
+        `, [channelContext.channel_id])
+        : { rows: [] };
+    const analyticsSummary = analyticsSnapshot.rows[0] || null;
     const historySnapshot = channelContext
         ? await query('SELECT role, content, created_at FROM conversation_messages WHERE channel_id = $1 ORDER BY created_at DESC LIMIT 12', [channelContext.channel_id])
         : { rows: [] };
@@ -151,6 +172,8 @@ export const askChannelAI = async (userQuestion) => {
                                MAX(v.published_at) AS newest_video_published_at,
                                MIN(v.published_at)::date AS oldest_video_date,
                                MAX(v.published_at)::date AS newest_video_date,
+                               MIN((v.published_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Bogota'))::date AS oldest_video_bogota_date,
+                               MAX((v.published_at AT TIME ZONE 'UTC' AT TIME ZONE 'America/Bogota'))::date AS newest_video_bogota_date,
                                COUNT(v.video_id) FILTER (WHERE v.publication_status = 'published')::int AS published_video_count,
                                COUNT(v.video_id) FILTER (WHERE v.publication_status = 'scheduled')::int AS scheduled_video_count,
                                COUNT(v.video_id) FILTER (WHERE v.content_type = 'shorts')::int AS shorts_count,
@@ -181,7 +204,8 @@ export const askChannelAI = async (userQuestion) => {
                 INSTRUCCIONES DE RESPUESTA:
                 El resumen del canal incluye suscriptores, vistas totales, cantidad de videos y fecha de actualización. Menciónalos cuando respondan a la pregunta y nunca los confundas con las vistas sumadas de videos.
                 Tambien eres experto en ideas de contenido, titulos, miniaturas, guiones, SEO, calendario editorial, Shorts, comunidad y monetizacion. No inventes metricas ni prometas viralidad.
-                Usa siempre oldest_video_date y newest_video_date para calcular la antiguedad y el periodo real de actividad. Son fechas de calendario del API; no las conviertas a otra zona horaria. Nunca asumas que el canal tiene uno o dos años por el numero de videos.
+                Usa siempre oldest_video_bogota_date y newest_video_bogota_date para calcular la antiguedad y el periodo real de actividad. Nunca asumas que el canal tiene uno o dos años por el numero de videos.
+                El bloque analyticsSummary contiene métricas calculadas directamente en PostgreSQL. Si videos_with_analytics es mayor que cero, usa esas métricas para el diagnóstico.
                 Si una métrica no aparece en los datos recibidos (por ejemplo CTR, impresiones o retención), dilo claramente como dato no disponible y no la sustituyas por porcentajes inventados ni hipótesis presentadas como hechos.
                 - Si el mensaje del usuario era un saludo o una prueba, responde amablemente indicando que estás listo para analizar su canal.
                 - Analiza la RETENCIÓN (% consumido): Si la retención es baja (<30%), advierte que el problema está en el gancho o la estructura del video.
@@ -190,7 +214,7 @@ export const askChannelAI = async (userQuestion) => {
             },
             {
                 role: 'user',
-                content: `Pregunta del creador: "${userQuestion}"\n\n${syncResult ? `Sincronizacion terminada: ${syncResult.totalVideosSynced} videos procesados. ` : ''}Resumen actual del canal (usa estos datos siempre que sean relevantes):\n${JSON.stringify(channelContext)}\n\nPerfil y objetivos del creador:\n${JSON.stringify(creatorProfile)}\n\nConversacion reciente (solo contexto breve):\n${JSON.stringify(compactHistory)}\n\nDatos de la consulta (muestra limitada; no inventes datos fuera de ella):\n${JSON.stringify(compactDbData)}`
+                content: `Pregunta del creador: "${userQuestion}"\n\n${syncResult ? `Sincronizacion terminada: ${syncResult.totalVideosSynced} videos procesados. ` : ''}Resumen actual del canal (usa estos datos siempre que sean relevantes):\n${JSON.stringify(channelContext)}\n\nResumen analítico calculado por PostgreSQL:\n${JSON.stringify(analyticsSummary)}\n\nPerfil y objetivos del creador:\n${JSON.stringify(creatorProfile)}\n\nConversacion reciente (solo contexto breve):\n${JSON.stringify(compactHistory)}\n\nDatos de la consulta (muestra limitada; no inventes datos fuera de ella):\n${JSON.stringify(compactDbData)}`
             }
         ],
         model: 'openai/gpt-oss-120b',
